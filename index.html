@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ペット配合計算機 Pro</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --bg: #f0f2f5;
+        }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background-color: var(--bg); 
+            margin: 0; padding: 10px; color: #333;
+        }
+        .container { max-width: 500px; margin: auto; }
+        
+        /* ボタン共通スタイル */
+        .btn-group { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+        button { 
+            flex: 1; min-height: 40px; border: none; border-radius: 8px; 
+            font-weight: bold; cursor: pointer; font-size: 0.8rem;
+        }
+        .btn-reset { background: #95a5a6; color: white; }
+        .btn-copy { background: var(--primary); color: white; }
+        .btn-save { background: var(--success); color: white; }
+
+        .card { 
+            background: white; border-radius: 12px; padding: 15px; 
+            margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .card-title { font-weight: bold; font-size: 0.95rem; margin-bottom: 12px; display: block; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        select, input {
+            width: 100%; height: 40px; border-radius: 6px; border: 1px solid #ccc;
+            font-size: 0.85rem; padding: 0 5px; background-color: #fff;
+        }
+
+        .result-area {
+            margin-top: 10px; padding: 10px; background: #f0f7ff;
+            border-radius: 8px; text-align: center; border: 1px solid var(--primary);
+        }
+        .prob-value { font-size: 1.3rem; font-weight: bold; color: var(--danger); }
+
+        /* 保存履歴セクション */
+        .history-item { 
+            background: #fff; padding: 10px; border-radius: 8px; 
+            margin-bottom: 5px; font-size: 0.8rem; border-left: 4px solid var(--success);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .btn-del { background: none; color: #e74c3c; border: 1px solid #e74c3c; flex: none; width: 40px; min-height: 30px; }
+
+        /* レアリティ別背景色 */
+        .rarity-1 { background-color: #ffdaff !important; } 
+        .rarity-2 { background-color: #ebd6ff !important; } 
+        .rarity-3 { background-color: #fffec2 !important; } 
+        .rarity-4 { background-color: #e2e2e2 !important; } 
+        .rarity-5 { background-color: #dcf2ff !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="btn-group">
+        <button class="btn-reset" onclick="resetAll()">🔄 全リセット</button>
+        <button class="btn-save" onclick="saveHistory()">💾 結果を保存</button>
+    </div>
+
+    <div class="card" style="border-top: 4px solid var(--danger);">
+        <span class="card-title">🌟 理想ペット</span>
+        <div class="grid" id="target-slots"></div>
+        <div class="btn-group" style="margin-top:10px;">
+            <button class="btn-copy" onclick="copyTo('main')">主親へコピー</button>
+            <button class="btn-copy" onclick="copyTo('cand')">全候補親へコピー</button>
+        </div>
+    </div>
+
+    <div class="card" style="border-top: 4px solid #333;">
+        <span class="card-title">🧬 主親ペット</span>
+        <div class="grid" id="main-parent-slots"></div>
+    </div>
+
+    <div id="candidates-container"></div>
+
+    <div class="card">
+        <span class="card-title">📜 保存された履歴</span>
+        <div id="history-list"></div>
+    </div>
+</div>
+
+<script>
+const skillDefinitions = {
+    cat1: { weight: 2, prob: 0.05, class: "rarity-1", skills: ["全方位打撃","スーパーリーグ","如羽流行","多重発射","逆行制御術","全能制御術","重拳反撃","激怒狂斬","無限爆発打撃","爆裂コスモ","無限夢幻","風軌斬裂","天性の大爆発","急所直撃","速度超過禁止","アンテナ誘雷","神託の触れ","秘術の光輝"] },
+    cat2: { weight: 3, prob: 0.15, class: "rarity-2", skills: ["耐久軟弱","脆弱マスター","安定主義","重厚甲冑","長命比べ","紙防御","背後の刃","研鈍妖斬","中庸之道","単独侵攻","速いが鈍い","染毒矢尻","惰性気体","器用貧乏","進退窮まる","野良の味方","吉報を待つ","他損自利","利他自損","逆境同舟","克己複傷","上上下下"] },
+    cat3: { weight: 5, prob: 0.25, class: "rarity-3", skills: ["超絶通常攻撃","超反射反撃","集結超連撃","スーパープラス","完全不制御","強敵育我","正当防衛","反射無効","恨み十分","精密防衛","敵意一心","迂回作戦","異常状態免疫","快速治療","短気体質","寿命延長","銅塀鉄壁"] },
+    cat4: { weight: 5, prob: 0.25, class: "rarity-4", skills: ["手足愚鈍","反応緩慢","コチョコチョ","労倍攻半","足枷追加","不発弾","虚弱体質","底無深淵","徹夜残業","腰抜腑抜","力持たない"] },
+    cat5: { weight: 8, prob: 0.40, class: "rarity-5", skills: ["強化通常攻撃","反射反撃","キノコ連撃","能力技能","憤怒加算","鉄桶回避","強化された、行け","再生能力"] }
+};
+
+const skillMap = { "None": { weight: 0, prob: 0, class: "" } };
+for (let catId in skillDefinitions) {
+    const cat = skillDefinitions[catId];
+    cat.skills.forEach(name => { skillMap[name] = { weight: cat.weight, prob: cat.prob, class: cat.class }; });
+}
+
+function nCr(n, r) {
+    if (r < 0 || r > n) return 0;
+    if (r === 0 || r === n) return 1;
+    let res = 1;
+    for (let i = 1; i <= r; i++) { res = res * (n - i + 1) / i; }
+    return res;
+}
+
+function createSelect(id) {
+    const select = document.createElement("select");
+    select.id = id;
+    select.onchange = function() {
+        this.className = skillMap[this.value].class;
+        calculateAll();
+    };
+    select.add(new Option("- 未選択 -", "None"));
+    for (let catId in skillDefinitions) {
+        const cat = skillDefinitions[catId];
+        const group = document.createElement("optgroup");
+        group.label = `W:${cat.weight} P:${cat.prob*100}%`;
+        cat.skills.forEach(name => { group.appendChild(new Option(name, name)); });
+        select.appendChild(group);
+    }
+    return select;
+}
+
+// 初期化
+const targetSlots = document.getElementById("target-slots");
+const mainSlots = document.getElementById("main-parent-slots");
+for (let i = 1; i <= 4; i++) {
+    targetSlots.appendChild(createSelect(`target_${i}`));
+    mainSlots.appendChild(createSelect(`main_${i}`));
+}
+
+const container = document.getElementById("candidates-container");
+for (let i = 1; i <= 4; i++) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.borderLeft = "5px solid var(--primary)";
+    card.innerHTML = `<span class="card-title">📋 候補親 ${i}</span>`;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    for (let j = 1; j <= 4; j++) { grid.appendChild(createSelect(`cand_${i}_${j}`)); }
+    const pInput = document.createElement("div");
+    pInput.innerHTML = `<input type="number" id="base_prob_${i}" value="1.0" step="0.1" oninput="calculateAll()" style="margin-top:10px;">`;
+    const res = document.createElement("div");
+    res.className = "result-area"; res.id = `result_${i}`;
+    card.appendChild(grid); card.appendChild(pInput); card.appendChild(res);
+    container.appendChild(card);
+}
+
+function calculateAll() {
+    const targets = [];
+    let tW = 0, tP = 0;
+    for (let i = 1; i <= 4; i++) {
+        const v = document.getElementById(`target_${i}`).value;
+        if (v !== "None") { targets.push(v); tW += skillMap[v].weight; tP += skillMap[v].prob; }
+    }
+    const mSet = [];
+    for (let i = 1; i <= 4; i++) {
+        const v = document.getElementById(`main_${i}`).value;
+        if (v !== "None") mSet.push(v);
+    }
+    for (let i = 1; i <= 4; i++) {
+        const cSet = [];
+        for (let j = 1; j <= 4; j++) {
+            const v = document.getElementById(`cand_${i}_${j}`).value;
+            if (v !== "None") cSet.push(v);
+        }
+        const bp = parseFloat(document.getElementById(`base_prob_${i}`).value) || 0;
+        const resEl = document.getElementById(`result_${i}`);
+        const pool = [...mSet, ...cSet];
+        const missing = targets.filter(s => !pool.includes(s));
+
+        if (targets.length === 0) { resEl.innerHTML = "スキルを選択"; continue; }
+        if (missing.length > 0) {
+            resEl.innerHTML = `<div style="color:var(--danger);font-size:0.8rem;">⚠️ 不足: ${missing[0]}等</div><div class="prob-value" style="opacity:0.3;">0%</div>`;
+            continue;
+        }
+
+        const comb = Array.from(new Set(pool));
+        let cW = 0; comb.forEach(s => cW += skillMap[s].weight);
+        const cV = nCr(comb.length - 1, 3);
+        const f = ((cV * cW) === 0 ? 0 : tW / (cV * cW)) * (tP / 4) * bp;
+        resEl.innerHTML = `<div class="prob-value">${(f * 100).toFixed(6)}%</div>`;
+    }
+}
+
+// 【新機能】リセット
+function resetAll() {
+    if(!confirm("すべてリセットしますか？")) return;
+    document.querySelectorAll('select').forEach(s => { s.value = "None"; s.className = ""; });
+    calculateAll();
+}
+
+// 【新機能】コピー
+function copyTo(type) {
+    const skills = [];
+    for (let i = 1; i <= 4; i++) { skills.push(document.getElementById(`target_${i}`).value); }
+    
+    if (type === 'main') {
+        for (let i = 1; i <= 4; i++) { 
+            const el = document.getElementById(`main_${i}`);
+            el.value = skills[i-1]; el.className = skillMap[skills[i-1]].class;
+        }
+    } else {
+        for (let i = 1; i <= 4; i++) {
+            for (let j = 1; j <= 4; j++) {
+                const el = document.getElementById(`cand_${i}_${j}`);
+                el.value = skills[j-1]; el.className = skillMap[skills[j-1]].class;
+            }
+        }
+    }
+    calculateAll();
+}
+
+// 【新機能】保存
+function saveHistory() {
+    const list = document.getElementById("history-list");
+    const now = new Date().toLocaleTimeString();
+    let maxProb = 0;
+    for (let i = 1; i <= 4; i++) {
+        const p = parseFloat(document.getElementById(`result_${i}`).innerText);
+        if (p > maxProb) maxProb = p;
+    }
+    if (maxProb === 0) { alert("有効な計算結果がありません"); return; }
+    
+    const div = document.createElement("div");
+    div.className = "history-item";
+    div.innerHTML = `
+        <div><strong>${maxProb.toFixed(6)}%</strong> <br><small>${now} 保存</small></div>
+        <button class="btn-del" onclick="this.parentElement.remove()">消去</button>
+    `;
+    list.prepend(div);
+}
+</script>
+</body>
+</html>
